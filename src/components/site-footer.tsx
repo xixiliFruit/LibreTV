@@ -28,7 +28,6 @@ function useUpstreamUpdate(current: string | null): UpstreamUpdate | null {
       setState(null);
       return;
     }
-    // 按当前版本隔离缓存到 sessionStorage：一次会话最多请求一次 GitHub API
     const cacheKey = `upstream-latest-tag:${current}`;
     const cached = sessionStorage.getItem(cacheKey);
     if (cached) {
@@ -57,7 +56,6 @@ function useUpstreamUpdate(current: string | null): UpstreamUpdate | null {
         );
       })
       .catch(() => {
-        /* 网络受限 / 触发 GitHub 限流时静默跳过 */
         if (alive) setState(null);
       });
     return () => {
@@ -67,16 +65,15 @@ function useUpstreamUpdate(current: string | null): UpstreamUpdate | null {
   return state;
 }
 
-/** 页脚仓库链接上的悬停提示：显示更新检测结果 */
 function UpdateTip({ update }: { update: UpstreamUpdate | null }) {
   const tip =
     update === null
       ? null
       : update.status === 'newer'
-        ? `发现新版本 v${update.latest}`
+        ? `上游发现新版本 v${update.latest}`
         : update.status === 'latest'
-          ? '已是最新版本'
-          : '正在检测更新…';
+          ? '已与当前上游版本对齐'
+          : '正在检测上游更新…';
   if (!tip) return null;
   return (
     <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-md border border-line bg-chip px-2 py-1 text-faint shadow-sm group-hover:block">
@@ -85,24 +82,50 @@ function UpdateTip({ update }: { update: UpstreamUpdate | null }) {
   );
 }
 
-/** 全站统一页脚：仓库链接 + 版本号（悬停显示上游更新检测结果） */
+/** 全站统一页脚：明确区分上游项目与当前增强版 */
 export function SiteFooter() {
   const { version } = useAuth();
   const upstreamUpdate = useUpstreamUpdate(version);
   return (
-    <footer className="border-t border-line py-4">
-      <p className="text-center text-xs text-faint">
+    <footer className="border-t border-line py-4 px-4">
+      <p className="text-center text-xs text-faint leading-relaxed">
+        基于{' '}
         <a
           href="https://github.com/LibreSpark/LibreTV"
           target="_blank"
           rel="noopener noreferrer"
-          className="group relative inline-block cursor-help hover:text-accent"
+          className="group relative inline-block hover:text-accent"
         >
           LibreTV{version ? ` v${version}` : ''}
           {version && <UpdateTip update={upstreamUpdate} />}
         </a>
         {' · '}
-        AGPL-3.0 License
+        <a
+          href="https://github.com/xixiliFruit/LibreTV"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-accent"
+        >
+          增强版源码
+        </a>
+        {' · '}
+        <a
+          href="https://github.com/xixiliFruit/LibreTV/blob/main/LICENSE"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-accent"
+        >
+          AGPL-3.0
+        </a>
+        {' · '}
+        <a
+          href="https://github.com/xixiliFruit/LibreTV/blob/main/NOTICE.md"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-accent"
+        >
+          归属与数据源原则
+        </a>
       </p>
     </footer>
   );
