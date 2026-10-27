@@ -12,12 +12,13 @@ import { useToast } from './toast';
 import { cn } from '@/lib/utils';
 import { addSearchHistory } from '@/lib/db';
 import { copyToClipboard } from '@/lib/clipboard';
+import { useFavorites, favoriteKey } from '@/lib/favorites';
 import { EmptyState, ErrorState, LoadingState } from './states';
 import { useFocusTrap } from './use-focus-trap';
 import { Icon } from './icon';
 
 /**
- * 详情弹窗：剧集列表 + 排序 + 复制链接。
+ * 详情弹窗：剧集列表 + 排序 + 复制链接 + 收藏。
  * 剧集点击 → /watch 路由（URL 携带定位参数，可分享、可后退）。
  */
 
@@ -25,6 +26,7 @@ export function DetailModal({ item, onClose }: { item: SearchResultItem | null; 
   const store = useAppStore();
   const router = useRouter();
   const { toast } = useToast();
+  const { favorites, toggle } = useFavorites();
   const [detail, setDetail] = useState<VideoDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -92,6 +94,7 @@ export function DetailModal({ item, onClose }: { item: SearchResultItem | null; 
 
   const episodes = detail ? (reversed ? [...detail.episodes].reverse() : detail.episodes) : [];
   const info = detail?.videoInfo;
+  const favorited = favorites.some((entry) => favoriteKey(entry) === favoriteKey(item));
 
   const play = (index: number) => {
     if (!detail || !detail.episodes[index]) return;
@@ -112,6 +115,11 @@ export function DetailModal({ item, onClose }: { item: SearchResultItem | null; 
     const ok = await copyToClipboard(detail.episodes.join('\n'));
     if (ok) toast('播放链接已复制', 'success');
     else toast('复制失败，请检查浏览器权限', 'error');
+  };
+
+  const toggleCurrentFavorite = () => {
+    const added = toggle(item);
+    toast(added ? `已收藏「${item.name}」` : `已取消收藏「${item.name}」`, added ? 'success' : 'info');
   };
 
   // 备注与卡片同源，同样归一化，避免同一部剧在两处显示不同文案
@@ -145,15 +153,25 @@ export function DetailModal({ item, onClose }: { item: SearchResultItem | null; 
             <h2 className="text-lg font-semibold text-content break-words">{item.name}</h2>
             <span className="text-sm text-faint">{item.sourceName}</span>
           </div>
-          <button
-            className="p-1.5 rounded-md text-muted hover:text-content hover:bg-hover shrink-0"
-            onClick={onClose}
-            aria-label="关闭"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              className={favorited ? 'btn-primary btn-sm' : 'btn-ghost btn-sm'}
+              onClick={toggleCurrentFavorite}
+              aria-pressed={favorited}
+            >
+              {favorited ? '★ 已收藏' : '☆ 收藏'}
+            </button>
+            <button
+              className="p-1.5 rounded-md text-muted hover:text-content hover:bg-hover"
+              onClick={onClose}
+              aria-label="关闭"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div className="p-5 pt-4">
