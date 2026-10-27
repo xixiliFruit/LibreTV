@@ -49,7 +49,9 @@ export function useSearchSourceNoticeMode() {
 }
 
 /**
- * 把本次搜索明确失败的源标记为长期停用。
+ * 把本次搜索明确失败的源从默认搜索集合中移除，并同步标记为长期停用。
+ * selectedKeys 本身会随 store 持久化，所以即使健康度历史日后被清理，失败源也不会自动回来。
+ * 用户若想恢复，只需在“设置 → 点播源”里重新勾选对应源。
  * “接口正常但结果为空”不会出现在 failures 中，因此不会误伤没有该影片的正常源。
  */
 export function rememberFailedSources(failures: FailedSourceLike[]): number {
@@ -73,7 +75,11 @@ export function rememberFailedSources(failures: FailedSourceLike[]): number {
         timestamp: now,
       };
     }
-    return { sourceHealth };
+
+    return {
+      sourceHealth,
+      selectedKeys: state.selectedKeys.filter((key) => !unique.has(key)),
+    };
   });
 
   return unique.size;
