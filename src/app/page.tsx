@@ -7,11 +7,13 @@ import { Header } from '@/components/header';
 import { RecommendSection } from '@/components/douban-section';
 import { DetailModal } from '@/components/detail-modal';
 import { AggregatedCard, aggregateResults } from '@/components/video-card';
+import { SearchSourceControls } from '@/components/search-source-controls';
 import { useAppStore, resolveSource, isInDisabledSubscription, isSourceDisabled } from '@/lib/store';
 import { api } from '@/lib/client-api';
 import type { SearchResultItem, SourceSearchOutcome } from '@/lib/types';
 import { SearchHistoryDropdown, useSearchHistory } from '@/components/search-history';
 import { cn, formatDisableTtl, validateSourceUrl } from '@/lib/utils';
+import { shouldToastSourceDisableEvents } from '@/lib/search-source-memory';
 import { useToast } from '@/components/toast';
 import { EmptyState } from '@/components/states';
 import { Icon } from '@/components/icon';
@@ -19,7 +21,7 @@ import { SiteFooter } from '@/components/site-footer';
 
 /**
  * 首页：搜索（URL ?s= 驱动，可后退/分享）+ 豆瓣推荐。
- * 搜索状态由 React Query 管理，失败源在结果区顶部以非阻塞方式展示。
+ * 搜索状态由 React Query 管理，失败源提示默认静默，可切换简洁/详细模式。
  */
 /** 搜索结果分批渲染的批大小：一次挂载上千张卡片会明显掉帧 */
 const RESULT_PAGE_SIZE = 60;
@@ -72,16 +74,13 @@ function HomeContent() {
         seen.add(s.key);
         return true;
       })
-      // 自动停用期内的源不参与搜索（到期自动恢复）
+      // 自动停用期内的源不参与搜索（长期记忆源同样在这里跳过）
       .filter((s) => !isSourceDisabled({ sourceHealth }, s.key))
       // 所属订阅被整体停用的源同样跳过（无损：各源勾选状态保留，重新启用即恢复）
       .filter((s) => !isInDisabledSubscription({ subscriptions }, s.key));
   }, [customAPIs, envSources, selectedKeys, sourceHealth, subscriptions]);
-  const disabledSources = useMemo(
-    () => selectedKeys.filter((key) => isSourceDisabled({ sourceHealth }, key)),
-    [selectedKeys, sourceHealth]
-  );
-  // 来自已关闭订阅的源：勾选状态还在，但本次搜索用不到，必须明确告知
+
+  // 来自已关闭订阅的源：勾选状态还在，但本次搜索用不到
   const offSubscriptionSources = useMemo(
     () =>
       selectedKeys.filter(
@@ -100,13 +99,17 @@ function HomeContent() {
         // 逐源结算即更新：结果边搜边渲染，同时滚动健康度
         onSource: (outcome) => {
           setStreamedOutcomes((prev) => [...prev, outcome]);
-          for (const ev of useAppStore.getState().recordSourceHealth([outcome])) {
-            toast(
-              ev.permanent
-                ? `「${sourceName(ev.key)}」多次失败，已停止参与搜索，可在设置中恢复`
-                : `「${sourceName(ev.key)}」连续超时/失败，已停用 ${formatDisableTtl(ev.ttlMs ?? 0)}`,
-              'warning'
-            );
+          const events = useAppStore.getState().recordSourceHealth([outcome]);
+          // 默认静默；只有用户主动选择“详细”时才保留旧版逐源 Toast。
+          if (shouldToastSourceDisableEvents(events)) {
+            for (const ev of events) {
+              toast(
+                ev.permanent
+                  ? `「${sourceName(ev.key)}」多次失败，已停止参与搜索，可在设置中恢复`
+                  : `「${sourceName(ev.key)}」连续超时/失败，已停用 ${formatDisableTtl(ev.ttlMs ?? 0)}`,
+                'warning'
+              );
+            }
           }
         },
       });
@@ -300,29 +303,11 @@ function HomeContent() {
               </h2>
             </div>
 
-            {failures.length > 0 && (
-              <div className="mb-3 text-xs bg-chip rounded-lg px-3 py-2 flex flex-wrap gap-x-3 gap-y-1">
-                <span className="text-faint">{isSearching ? '以下源暂时无响应：' : '部分点播源请求失败：'}</span>
-                {failures.map((f) => (
-                  <span key={f.sourceKey} className={f.timedOut ? 'text-warning' : 'text-faint'}>
-                    {f.timedOut ? '⏱' : '✗'} {sourceName(f.sourceKey)}
-                    {f.timedOut ? ' 超时' : ''}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {disabledSources.length > 0 && (
-              <div className="mb-3 text-xs text-faint bg-chip rounded-lg px-3 py-2">
-                {disabledSources.length} 个源因连续超时/失败已暂停参与搜索（临时停用的到期自动恢复，
-                长期停用的需在设置中手动恢复）：{disabledSources.map((key) => sourceName(key)).join('、')}
-              </div>
-            )}
+            <SearchSourceControls failures={failures} sourceName={sourceName} isSearching={isSearching} />
 
             {offSubscriptionSources.length > 0 && (
               <div className="mb-3 text-xs text-faint bg-chip rounded-lg px-3 py-2">
-                {offSubscriptionSources.length} 个源所属的订阅已停用，未参与本次搜索（在设置 → 数据源订阅中可重新启用）：
-                {offSubscriptionSources.map((key) => sourceName(key)).join('、')}
+                {offSubscriptionSources.length} 个源所属订阅已停用，本次未参与搜索；可在设置 → 数据源订阅中重新启用。
               </div>
             )}
 
